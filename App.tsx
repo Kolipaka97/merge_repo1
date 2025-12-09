@@ -1,103 +1,162 @@
+
 import React, { useState } from 'react';
-import { ProjectForm } from './components/ProjectForm';
-import { AnalysisView } from './components/AnalysisView';
-import { ProjectInput, MarketResearchResult, AnalysisStage } from './types';
-import { runQuickScan, runMarketResearch, runDeepAnalysis } from './services/geminiService';
-import { Activity } from 'lucide-react';
+import { ProjectInputs, EstimationResult, FeasibilityResult, ProjectType, QualityLevel } from './types';
+import EstimatorForm from './components/EstimatorForm';
+import ResultsDashboard from './components/ResultsDashboard';
+import ChatInterface from './components/ChatInterface';
+import { checkProjectFeasibility, generateConstructionEstimate } from './services/geminiService';
+import { LayoutDashboard, MessageSquare, HardHat } from 'lucide-react';
 
-export default function App() {
-  const [stage, setStage] = useState<AnalysisStage>(AnalysisStage.IDLE);
-  const [quickScanResult, setQuickScanResult] = useState<string | null>(null);
-  const [marketData, setMarketData] = useState<MarketResearchResult | null>(null);
-  const [deepAnalysisReport, setDeepAnalysisReport] = useState<string | null>(null);
+const App: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'estimator' | 'chat'>('estimator');
+  const [loading, setLoading] = useState(false);
+  const [estimationResult, setEstimationResult] = useState<EstimationResult | null>(null);
+  
+  // Feasibility State
+  const [feasibilityChecking, setFeasibilityChecking] = useState(false);
+  const [feasibilityData, setFeasibilityData] = useState<FeasibilityResult | null>(null);
+  
+  // Keep track of current inputs for the dashboard comparison
+  const [currentInputs, setCurrentInputs] = useState<ProjectInputs>({
+    type: ProjectType.RESIDENTIAL,
+    quality: QualityLevel.STANDARD,
+    location: '',
+    sizeSqFt: 1000,
+    budgetLimit: 0,
+    timelineMonths: 6,
+    manpower: 5
+  });
 
-  const handleAnalysisStart = async (input: ProjectInput) => {
-    setStage(AnalysisStage.QUICK_SCAN);
-    setQuickScanResult(null);
-    setMarketData(null);
-    setDeepAnalysisReport(null);
-
+  const handleFeasibilityCheck = async (inputs: ProjectInputs) => {
+    setFeasibilityChecking(true);
+    setCurrentInputs(inputs);
     try {
-      // Step 1: Quick Scan (Parallel with next step start ideally, but sequential for clear UI flow here)
-      const scanRes = await runQuickScan(input);
-      setQuickScanResult(scanRes);
-      
-      // Step 2: Market Research
-      setStage(AnalysisStage.MARKET_RESEARCH);
-      const marketRes = await runMarketResearch(input);
-      setMarketData(marketRes);
+      const result = await checkProjectFeasibility(inputs);
+      setFeasibilityData(result);
+    } catch (error) {
+      console.error("Feasibility error", error);
+    } finally {
+      setFeasibilityChecking(false);
+    }
+  };
 
-      // Step 3: Deep Analysis (Thinking)
-      setStage(AnalysisStage.DEEP_THINKING);
-      // We pass the market summary to the deep thinker
-      const deepRes = await runDeepAnalysis(input, marketRes.summary);
-      setDeepAnalysisReport(deepRes);
-
-      setStage(AnalysisStage.COMPLETE);
-
+  const handleEstimate = async (inputs: ProjectInputs) => {
+    setLoading(true);
+    setEstimationResult(null);
+    setCurrentInputs(inputs);
+    try {
+      const result = await generateConstructionEstimate(inputs);
+      setEstimationResult(result);
     } catch (error) {
       console.error(error);
-      setStage(AnalysisStage.ERROR);
+      alert("Estimation failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 font-sans flex flex-col">
-      
+    <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
-              <Activity className="w-5 h-5" />
+            <div className="bg-blue-600 p-2 rounded-lg">
+              <HardHat className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-800">
-              Feasibly<span className="text-indigo-600">.AI</span>
-            </h1>
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight">BuildSmart <span className="text-blue-600">AI</span></h1>
           </div>
-          <div className="text-sm text-slate-500 font-medium hidden sm:block">
-            Powered by Gemma 3 27b
-          </div>
+          
+          <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+            <button 
+              onClick={() => setActiveTab('estimator')}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === 'estimator' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <div className="flex items-center gap-2">
+                <LayoutDashboard className="w-4 h-4" /> Estimator
+              </div>
+            </button>
+            <button 
+              onClick={() => setActiveTab('chat')}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === 'chat' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4" /> Assistant
+              </div>
+            </button>
+          </nav>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[calc(100vh-8rem)]">
-          
-          {/* Left Panel: Input */}
-          <div className="lg:col-span-4 h-full">
-            <ProjectForm 
-              onSubmit={handleAnalysisStart} 
-              isLoading={stage !== AnalysisStage.IDLE && stage !== AnalysisStage.COMPLETE && stage !== AnalysisStage.ERROR} 
-            />
-          </div>
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {activeTab === 'estimator' && (
+          <div className="space-y-8">
+            <div className="max-w-3xl mx-auto text-center mb-8">
+              <h2 className="text-3xl font-bold text-slate-900 mb-2">Intelligent Cost Estimation</h2>
+              <p className="text-slate-500">
+                Powered by AI. Get real-time market insights, 
+                feasibility scores, and detailed breakdowns for any global location.
+              </p>
+            </div>
 
-          {/* Right Panel: Output */}
-          <div className="lg:col-span-8 h-full bg-slate-50 rounded-2xl">
-            <AnalysisView 
-              stage={stage}
-              quickScanResult={quickScanResult}
-              marketData={marketData}
-              deepAnalysisReport={deepAnalysisReport}
-            />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              <div className="lg:col-span-4 space-y-6">
+                <EstimatorForm 
+                  onEstimate={handleEstimate}
+                  onFeasibilityCheck={handleFeasibilityCheck}
+                  isChecking={feasibilityChecking}
+                  feasibilityData={feasibilityData}
+                />
+              </div>
+
+              <div className="lg:col-span-8">
+                 {loading ? (
+                   <div className="h-full min-h-[400px] flex flex-col items-center justify-center bg-white rounded-xl border border-slate-100 shadow-sm p-8 text-center">
+                     <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+                     <h3 className="text-lg font-semibold text-slate-800">Analyzing Project...</h3>
+                     <p className="text-slate-500 max-w-md mt-2">
+                       AI is using "Thinking Mode" to calculate complex costs, analyze risks, and fetch local market data. This may take a moment.
+                     </p>
+                   </div>
+                 ) : estimationResult ? (
+                   <ResultsDashboard 
+                     result={estimationResult} 
+                     location={currentInputs.location}
+                     userBudget={currentInputs.budgetLimit}
+                   />
+                 ) : (
+                   <div className="h-full min-h-[400px] flex flex-col items-center justify-center bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center">
+                     <div className="bg-slate-50 p-4 rounded-full mb-4">
+                       <LayoutDashboard className="w-8 h-8 text-slate-400" />
+                     </div>
+                     <h3 className="text-lg font-medium text-slate-900">No Estimate Generated Yet</h3>
+                     <p className="text-slate-500 max-w-sm mt-1">
+                       Fill out the project details on the left and click "Generate" to see a comprehensive AI analysis.
+                     </p>
+                   </div>
+                 )}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {activeTab === 'chat' && (
+          <div className="max-w-2xl mx-auto">
+            <ChatInterface />
+          </div>
+        )}
+
       </main>
-      
-      {/* CSS for custom progress animation */}
-      <style>{`
-        @keyframes progress-indeterminate {
-          0% { left: -100%; width: 100%; }
-          100% { left: 100%; width: 10%; }
-        }
-        .animate-progress-indeterminate {
-          animation: progress-indeterminate 2s infinite linear;
-          position: absolute;
-          top: 0;
-          bottom: 0;
-        }
-      `}</style>
+
+      <footer className="bg-white border-t border-slate-200 mt-auto py-6">
+        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-slate-500">
+          &copy; {new Date().getFullYear()} BuildSmart AI Estimator
+        </div>
+      </footer>
     </div>
   );
-}
+};
+
+export default App;
